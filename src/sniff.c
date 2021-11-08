@@ -4,8 +4,11 @@
 #include <pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 
 #include "dispatch.h"
+#include "analysis.h"
+
 
 // Callback function for pcap_loop() that determines if packet should be dumped based upon verbose flag
 void callback(unsigned char *verbose_chr, const struct pcap_pkthdr *header, const unsigned char *packet) {
@@ -93,6 +96,10 @@ void sniff(char *interface, int verbose) {
     // Create unsigned char for verbose such that it can be passed to callback function
     const unsigned char verbose_chr = (unsigned char) verbose;
 
+    // Add signal handler for CtrlC detection
+    signal(SIGINT, exit_callback);
+
     // Captures packets using pcap_loop() and for each packet calls the callback function
     pcap_loop(pcap_handle, -1, callback, &verbose_chr);
+    
 }

@@ -4,12 +4,18 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <pcap.h>
+#include <signal.h>
+#include <stdlib.h>
+
+static int syn_packets = 0;
+static in_addr_t ip_addresses[50];
+
+void exit_callback(int signum){
+    printf("%d SYN packets detected", syn_packets);
+	exit(signum);
+}
 
 void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {
-	// Define static variables
-	static int syn_packets = 0;
-	static in_addr_t ip_addresses[50];
-
 	// Process Ethernet header
 	struct ether_header *eth_header = (struct ether_header *) packet;
 
@@ -19,6 +25,8 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 	u_int8_t ip_protocol = ip_header->ip_p;
 	struct in_addr ip_src = ip_header->ip_src;
 	struct in_addr ip_dst = ip_header->ip_dst;
+
+	printf("\n%d",ip_protocol);
 
 	if (ip_protocol == 5){
 		//Process TCP header

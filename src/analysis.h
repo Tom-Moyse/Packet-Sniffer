@@ -7,4 +7,6 @@ void analyse(struct pcap_pkthdr *header,
              const unsigned char *packet,
              int verbose);
 
+void exit_callback(int signum);
+
 #endif
