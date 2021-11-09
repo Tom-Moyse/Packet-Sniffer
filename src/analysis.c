@@ -20,7 +20,7 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 	struct ether_header *eth_header = (struct ether_header *) packet;
 
 	// Process IP header
-	struct ip *ip_header = (struct ip *) packet + ETH_HLEN;
+	struct ip *ip_header = (struct ip *) (packet + ETH_HLEN);
 	unsigned int ip_length = (ip_header->ip_hl) * 4;
 	u_int8_t ip_protocol = ip_header->ip_p;
 	struct in_addr ip_src = ip_header->ip_src;
@@ -28,9 +28,9 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 
 	printf("\n%d",ip_protocol);
 
-	if (ip_protocol == 5){
+	if (ip_protocol == 6){
 		//Process TCP header
-		struct tcphdr *tcp_header = (struct tcphdr *) ip_header + ip_length;
+		struct tcphdr *tcp_header = (struct tcphdr *) (ip_header + ip_length);
 		u_int16_t tcp_src = tcp_header->th_sport;
 		u_int16_t tcp_dst = tcp_header->th_dport;
 		unsigned int tcp_length = (tcp_header->th_off) * 4;
