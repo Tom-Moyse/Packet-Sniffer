@@ -26,15 +26,27 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 	struct in_addr ip_src = ip_header->ip_src;
 	struct in_addr ip_dst = ip_header->ip_dst;
 
-	printf("\n%d",ip_protocol);
-
-	if (ip_protocol == 6){
+	if (ip_protocol == IPPROTO_TCP){
 		//Process TCP header
-		struct tcphdr *tcp_header = (struct tcphdr *) (ip_header + ip_length);
+
+		// This works
+		struct tcphdr *tcp_header = (struct tcphdr *) (packet + ETH_HLEN + ip_length);
+
+		// This doesn't work
+		// struct tcphdr *tcp_header = (struct tcphdr *) (ip_header + ip_length);
+
+		// These are identical
+		//printf("%p %p",ip_header, packet + ETH_HLEN );
+
+		// These are different
+		// printf(" %d %p %p",ip_length, ip_header + ip_length, packet + ETH_HLEN + ip_length);
+
 		u_int16_t tcp_src = tcp_header->th_sport;
 		u_int16_t tcp_dst = tcp_header->th_dport;
 		unsigned int tcp_length = (tcp_header->th_off) * 4;
-		if (tcp_header->th_flags == TH_SYN){
+		printf("\n%d",(tcp_header->th_flags & TH_SYN));
+
+		if ((tcp_header->th_flags & TH_SYN)){
 			// Is SYN packet
 			if (syn_packets < 50){
 				ip_addresses[syn_packets] = ip_src.s_addr;
