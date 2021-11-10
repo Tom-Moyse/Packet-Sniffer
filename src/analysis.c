@@ -40,7 +40,6 @@ void free_arr_ip(dyn_arr_ip *arr){
 }
 
 void exit_callback(int signum){
-    printf("\n%d SYN packets detected\n", syn_packets);
 	// To find number of unique IP's first make sorted array
 	in_addr_t uniques[ip_addresses.used];
 	int length = 0;
@@ -62,7 +61,7 @@ void exit_callback(int signum){
 		}
 	}
 
-	printf("%d Unique IP source addresses\n", length);
+	printf("\n%d SYN packets detected from %d different IPs (syn attack)\n", syn_packets, length);
 
 	exit(signum);
 }
