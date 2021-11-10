@@ -116,8 +116,8 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 
 		if (ntohs(tcp_dst) == 80){
 			int num_bytes = (*header).len - (ETH_HLEN + ip_length + tcp_length);
-    		const unsigned char *payload = packet + ETH_HLEN + ip_length + tcp_length;
-			
+    		unsigned char *payload = packet + ETH_HLEN + ip_length + tcp_length;
+
 			unsigned char *host_pos = strstr(payload, "Host: ");
 
 			if (host_pos != NULL){
