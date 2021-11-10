@@ -6,6 +6,7 @@
 #include <pcap.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct dyn_arr_ip{
 	in_addr_t *arr;
@@ -14,6 +15,8 @@ typedef struct dyn_arr_ip{
 } dyn_arr_ip;
 
 static int syn_packets = 0;
+static int arp_packets = 0;
+static int urlv_packets = 0;
 static dyn_arr_ip ip_addresses;
 static int is_initialised = 0;
 
@@ -62,9 +65,13 @@ void exit_callback(int signum){
 	}
 
 	printf("\n%d SYN packets detected from %d different IPs (syn attack)\n", syn_packets, length);
+	printf("%d ARP responses\n", arp_packets);
+	printf("%d URL Blacklist violations\n", urlv_packets);
 
 	exit(signum);
 }
+
+
 
 void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {
 	if (!is_initialised){
@@ -73,6 +80,10 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 	}
 	// Process Ethernet header
 	struct ether_header *eth_header = (struct ether_header *) packet;
+	// Detect if ARP packet
+	if (ntohs(eth_header->ether_type) == ETH_P_ARP){
+		arp_packets++;
+	}
 
 	// Process IP header
 	struct ip *ip_header = (struct ip *) (packet + ETH_HLEN);
@@ -102,6 +113,26 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 		u_int16_t tcp_src = tcp_header->th_sport;
 		u_int16_t tcp_dst = tcp_header->th_dport;
 		unsigned int tcp_length = (tcp_header->th_off) * 4;
+
+		if (ntohs(tcp_dst) == 80){
+			int num_bytes = (*header).len - (ETH_HLEN + ip_length + tcp_length);
+    		const unsigned char *payload = packet + ETH_HLEN + ip_length + tcp_length;
+			
+			unsigned char *host_pos = strstr(payload, "Host: ");
+
+			if (host_pos != NULL){
+				unsigned char *domain_pos = host_pos+6;
+				if (strstr(domain_pos, "www.google.co.uk") != NULL || strstr(domain_pos, "www.bbc.com") != NULL){
+					urlv_packets++;
+					char mystring[50];
+					printf("==============================\n");
+					printf("Blacklisted URL violation detection\n");
+					printf("Source IP address: %s\n", inet_ntop(AF_INET, &(ip_src.s_addr), &mystring, 50));
+					printf("Destination IP address: %s\n", inet_ntop(AF_INET, &(ip_dst.s_addr), &mystring, 50));
+					printf("==============================\n");
+				}
+			}
+		}
 
 		// Use equals opposed to & as want to check exclusively syn bit set
 		if (tcp_header->th_flags == TH_SYN){
