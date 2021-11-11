@@ -78,6 +78,7 @@ void dump(const unsigned char *data, int length) {
 
 // Application main sniffing loop
 void sniff(char *interface, int verbose) {
+    init_threads();
     char errbuf[PCAP_ERRBUF_SIZE];
 
     // Open the specified network interface for packet capture. pcap_open_live() returns the handle to be used for the packet
@@ -101,5 +102,4 @@ void sniff(char *interface, int verbose) {
 
     // Captures packets using pcap_loop() and for each packet calls the callback function
     pcap_loop(pcap_handle, -1, callback, &verbose_chr);
-    
 }

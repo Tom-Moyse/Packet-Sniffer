@@ -73,6 +73,8 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 
+pthread_t tid[NUMTHREADS];
+
 /*Function to be executed by each worker thread*/
 void *handle_conn(void *arg) {
     struct pcap_pkthdr *header;
@@ -97,91 +99,31 @@ void *handle_conn(void *arg) {
     return NULL;
 }
 
-
-void dispatch(struct pcap_pkthdr *header,
-              const unsigned char *packet,
-              int verbose) {
-    // TODO: Your part 2 code here
-    // This method should handle dispatching of work to threads. At present
-    // it is a simple passthrough as this skeleton is single-threaded.
-    analyse(header, packet, verbose);
-}
-
-#include <ctype.h>
-#include <netdb.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#define BUFSIZE 2048
-#define BACKLOG 500
-#define PORTNO 8888
-
-
-
-int main(int argc, char **argv) {
-    struct sockaddr_in myaddr;           /* our address */
-    struct sockaddr_in remaddr;          /* remote address */
-    int conn_sock;                       /* connection specific socket */
-    socklen_t addrlen = sizeof(remaddr); /* length of addresses */
-    int recvlen;                         /* # bytes received */
-    int servSocket;                      /* our socket */
-    int msgcnt = 0;                      /* count # of messages we received */
-    char buf[BUFSIZE];                   /* receive buffer */
-    int *sock_ptr;
-    int i;
-    pthread_t tid[NUMTHREADS];  // array to store thread id's
-    unsigned short port_num = PORTNO;
-
+void init_threads(){
     //create work queue
     work_queue = create_queue();
 
     //create the worker threads
-    for (i = 0; i < NUMTHREADS; i++) {
+    for (int i = 0; i < NUMTHREADS; i++) {
         pthread_create(&tid[i], NULL, handle_conn, NULL);
+        pthread_detach(tid[i]);
     }
+}
 
-    /* create a TCP socket */
-
-    if ((servSocket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        printf("Error: cannot create socket\n");
-        exit(1);
-    }
-
-    /* bind the socket to any valid IP address and a specific port */
-
-    memset((char *)&myaddr, 0, sizeof(myaddr));
-    myaddr.sin_family = AF_INET;
-    myaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    myaddr.sin_port = htons(port_num);
-
-    if (bind(servSocket, (struct sockaddr *)&myaddr, sizeof(myaddr)) < 0) {
-        printf("Error: bind failed\n");
-        exit(1);
-    }
-
-    // start listening on the created port for incoming connections
-    // the second parameter "BACKLOG" specifies the max number of connections that can
-    // wait in a queue to get accepted
-    listen(servSocket, BACKLOG);
-    printf("waiting on port %d\n", port_num);
-
-    /* now loop, accepting incoming connections and adding them to the work queue */
-    while (1) {
-        // accept incoming connection request and create connection specific socket
-
-        conn_sock = accept(servSocket, (struct sockaddr *)&remaddr, &addrlen);
-
-        // acquire lock, add connection socket to the work queue,
-        // signal the waiting threads, and release lock
-        pthread_mutex_lock(&queue_mutex);
-        enqueue(work_queue, conn_sock);
-        pthread_cond_broadcast(&queue_cond);
-        pthread_mutex_unlock(&queue_mutex);
-    }
+void close_threads(){
     destroy_queue(work_queue);
-    printf("Server program ended normally\n");
-    return 0;
+    for (int i = 0; i < NUMTHREADS; i++) {
+        pthread_exit(tid[i]);
+    }
+}
+
+void dispatch(struct pcap_pkthdr *header,
+              const unsigned char *packet,
+              int verbose) {
+    // acquire lock, add connection socket to the work queue,
+    // signal the waiting threads, and release lock
+    pthread_mutex_lock(&queue_mutex);
+    enqueue(work_queue, header, packet, verbose);
+    pthread_cond_broadcast(&queue_cond);
+    pthread_mutex_unlock(&queue_mutex);
 }

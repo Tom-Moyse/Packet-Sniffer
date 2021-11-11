@@ -7,4 +7,7 @@ void dispatch(struct pcap_pkthdr *header,
               const unsigned char *packet,
               int verbose);
 
+void init_threads();
+void close_threads();
+
 #endif

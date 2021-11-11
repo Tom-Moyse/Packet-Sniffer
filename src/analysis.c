@@ -1,4 +1,5 @@
 #include "analysis.h"
+#include "dispatch.h"
 
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
@@ -68,6 +69,7 @@ void exit_callback(int signum){
 	printf("%d ARP responses\n", arp_packets);
 	printf("%d URL Blacklist violations\n", urlv_packets);
 
+	close_threads();
 	exit(signum);
 }
 
