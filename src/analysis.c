@@ -76,6 +76,8 @@ void exit_callback(int signum){
 
 
 void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {
+	int packet_length = header->caplen;
+
 	if (!is_initialised){
 		init_arr_ip(&ip_addresses, 5);
 		is_initialised = 1;
@@ -112,25 +114,32 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 		// These are different
 		// printf(" %d %p %p",ip_length, ip_header + ip_length, packet + ETH_HLEN + ip_length);
 
-		u_int16_t tcp_src = tcp_header->th_sport;
+		//u_int16_t tcp_src = tcp_header->th_sport;
 		u_int16_t tcp_dst = tcp_header->th_dport;
 		unsigned int tcp_length = (tcp_header->th_off) * 4;
 
 		if (ntohs(tcp_dst) == 80){
-			int num_bytes = (*header).len - (ETH_HLEN + ip_length + tcp_length);
-    		unsigned char *payload = packet + ETH_HLEN + ip_length + tcp_length;
+			int num_bytes = packet_length - (ETH_HLEN + ip_length + tcp_length);
+    		unsigned char *payload = (unsigned char *)packet + ETH_HLEN + ip_length + tcp_length;
+			
+			// Copy http payload to string
+			char http_string[packet_length - num_bytes + 1];
+			http_string[packet_length - num_bytes] = '\0';
+			for (int i = 0; i < packet_length - num_bytes; i++){
+				http_string[i] = *(payload + i);
+			}
 
-			unsigned char *host_pos = strstr(payload, "Host: ");
+			char *host_pos = strstr(http_string, "Host: ");
 
 			if (host_pos != NULL){
-				unsigned char *domain_pos = host_pos+6;
+				char *domain_pos = host_pos+6;
 				if (strstr(domain_pos, "www.google.co.uk") != NULL || strstr(domain_pos, "www.bbc.com") != NULL){
 					urlv_packets++;
 					char mystring[50];
 					printf("==============================\n");
 					printf("Blacklisted URL violation detection\n");
-					printf("Source IP address: %s\n", inet_ntop(AF_INET, &(ip_src.s_addr), &mystring, 50));
-					printf("Destination IP address: %s\n", inet_ntop(AF_INET, &(ip_dst.s_addr), &mystring, 50));
+					printf("Source IP address: %s\n", inet_ntop(AF_INET, &(ip_src.s_addr), mystring, 50));
+					printf("Destination IP address: %s\n", inet_ntop(AF_INET, &(ip_dst.s_addr), mystring, 50));
 					printf("==============================\n");
 				}
 			}
