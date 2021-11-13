@@ -4,12 +4,13 @@
 #include <pcap.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "analysis.h"
 
 struct node {  // data structure for each node
-    const struct pcap_pkthdr *header;
-    const unsigned char *packet;
+    struct pcap_pkthdr header;
+    unsigned char packet;
     int verbose;
     struct node *next;
 };
@@ -52,10 +53,11 @@ void destroy_queue(struct queue *q) {  //destroys the queue and frees the memory
 
 void enqueue(struct queue *q, const struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {  //enqueues a node with an item
     struct node *new_node = (struct node *)malloc(sizeof(struct node));
-    new_node->header = header;
-    new_node->packet = packet;
+    new_node->header = *header;
+    new_node->packet = *packet;
     new_node->verbose = verbose;
     new_node->next = NULL;
+    //printf("Size 0: %d, Size 1: %d\n",new_node->nheader->len,new_node->headsize);
     if (isempty(q)) {
         q->head = new_node;
         q->tail = new_node;
@@ -92,15 +94,16 @@ void *handle_thread(void *arg) {
         while (isempty(work_queue)) {
             pthread_cond_wait(&queue_cond, &queue_mutex);
         }
-        header = work_queue->head->header;
-        packet = work_queue->head->packet;
+        header = &(work_queue->head->header);
+        packet = &(work_queue->head->packet);
         verbose = work_queue->head->verbose;
         dequeue(work_queue);
         pthread_mutex_unlock(&queue_mutex);
 
-        //dump(packet, header->len);
+        printf("\n\n\nPacket Inside\n");
+        dump(packet, header->len);
 
-        analyse(header, packet, verbose);
+        //analyse(header, packet, verbose);
 
         if (end_analysis){
             return NULL;
@@ -132,7 +135,10 @@ void dispatch(const struct pcap_pkthdr *header,
     // acquire lock, add connection socket to the work queue,
     // signal the waiting threads, and release lock
     pthread_mutex_lock(&queue_mutex);
+    printf("\n\n\nPacket Outside\n");
+    dump(packet, header->len);
     enqueue(work_queue, header, packet, verbose);
+    //printf("Packet size: %d, True Packet size: %d\n", work_queue->head->header.len, header->len);
     pthread_cond_broadcast(&queue_cond);
     pthread_mutex_unlock(&queue_mutex);
     //analyse(header, packet, verbose);

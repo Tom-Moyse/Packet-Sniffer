@@ -9,7 +9,6 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 
 typedef struct dyn_arr_ip{
 	in_addr_t *arr;
@@ -71,8 +70,6 @@ void exit_callback(int signum){
 	printf("%d ARP responses\n", arp_packets);
 	printf("%d URL Blacklist violations\n", urlv_packets);
 
-	wait(1);
-
 	close_threads();
 	exit(signum);
 }
@@ -102,8 +99,9 @@ void analyse(const struct pcap_pkthdr *header, const unsigned char *packet, int 
 
 	//char mystring[50];
 	//printf("IP source: %s\n", inet_ntop(AF_INET, &(ip_src.s_addr), &mystring, 50));
-
+	printf("IP Protocol: %d\n", ip_protocol);
 	if (ip_protocol == IPPROTO_TCP){
+		
 		//Process TCP header
 
 		// This works
@@ -123,7 +121,6 @@ void analyse(const struct pcap_pkthdr *header, const unsigned char *packet, int 
 		unsigned int tcp_length = (tcp_header->th_off) * 4;
 
 		if (ntohs(tcp_dst) == 80){
-			
 			int num_bytes = packet_length - (ETH_HLEN + ip_length + tcp_length);
     		unsigned char *payload = (unsigned char *)packet + ETH_HLEN + ip_length + tcp_length;
 			
