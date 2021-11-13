@@ -1,12 +1,14 @@
 #include "dispatch.h"
+#include "sniff.h"
 
 #include <pcap.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 #include "analysis.h"
 
 struct node {  // data structure for each node
-    struct pcap_pkthdr *header;
+    const struct pcap_pkthdr *header;
     const unsigned char *packet;
     int verbose;
     struct node *next;
@@ -24,30 +26,8 @@ struct queue *create_queue(void) {  //creates a queue and returns its pointer
     return (q);
 }
 
-void destroy_queue(struct queue *q) {  //destroys the queue and frees the memory
-    while (!isempty(q)) {
-        dequeue(q);
-    }
-    free(q);
-}
-
 int isempty(struct queue *q) {  // checks if queue is empty
     return (q->head == NULL);
-}
-
-void enqueue(struct queue *q, struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {  //enqueues a node with an item
-    struct node *new_node = (struct node *)malloc(sizeof(struct node));
-    new_node->header = header;
-    new_node->packet = packet;
-    new_node->verbose = verbose;
-    new_node->next = NULL;
-    if (isempty(q)) {
-        q->head = new_node;
-        q->tail = new_node;
-    } else {
-        q->tail->next = new_node;
-        q->tail = new_node;
-    }
 }
 
 void dequeue(struct queue *q) {  //dequeues a the head node
@@ -63,7 +43,29 @@ void dequeue(struct queue *q) {  //dequeues a the head node
     }
 }
 
-#define NUMTHREADS 10
+void destroy_queue(struct queue *q) {  //destroys the queue and frees the memory
+    while (!isempty(q)) {
+        dequeue(q);
+    }
+    free(q);
+}
+
+void enqueue(struct queue *q, const struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {  //enqueues a node with an item
+    struct node *new_node = (struct node *)malloc(sizeof(struct node));
+    new_node->header = header;
+    new_node->packet = packet;
+    new_node->verbose = verbose;
+    new_node->next = NULL;
+    if (isempty(q)) {
+        q->head = new_node;
+        q->tail = new_node;
+    } else {
+        q->tail->next = new_node;
+        q->tail = new_node;
+    }
+}
+
+#define NUMTHREADS 1
 /* Queue where the main server thread adds work and from where the 
 worker threads pull work*/
 struct queue *work_queue;
@@ -75,10 +77,12 @@ pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 
 pthread_t tid[NUMTHREADS];
 
+static int end_analysis = 0;
+
 /*Function to be executed by each worker thread*/
-void *handle_conn(void *arg) {
-    struct pcap_pkthdr *header;
-    unsigned char *packet;
+void *handle_thread(void *arg) {
+    const struct pcap_pkthdr *header;
+    const unsigned char *packet;
     int verbose;
     /* In a loop continue checking if any more work is left to be done*/
     while (1) {
@@ -94,7 +98,13 @@ void *handle_conn(void *arg) {
         dequeue(work_queue);
         pthread_mutex_unlock(&queue_mutex);
 
+        //dump(packet, header->len);
+
         analyse(header, packet, verbose);
+
+        if (end_analysis){
+            return NULL;
+        }
     }
     return NULL;
 }
@@ -105,25 +115,25 @@ void init_threads(){
 
     //create the worker threads
     for (int i = 0; i < NUMTHREADS; i++) {
-        pthread_create(&tid[i], NULL, handle_conn, NULL);
+        pthread_create(&tid[i], NULL, handle_thread, NULL);
         pthread_detach(tid[i]);
     }
 }
 
 void close_threads(){
     destroy_queue(work_queue);
-    for (int i = 0; i < NUMTHREADS; i++) {
-        pthread_exit(tid[i]);
-    }
+    end_analysis = 1;
 }
 
-void dispatch(struct pcap_pkthdr *header,
+void dispatch(const struct pcap_pkthdr *header,
               const unsigned char *packet,
               int verbose) {
+                  
     // acquire lock, add connection socket to the work queue,
     // signal the waiting threads, and release lock
     pthread_mutex_lock(&queue_mutex);
     enqueue(work_queue, header, packet, verbose);
     pthread_cond_broadcast(&queue_cond);
     pthread_mutex_unlock(&queue_mutex);
+    //analyse(header, packet, verbose);
 }

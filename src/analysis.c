@@ -1,5 +1,6 @@
 #include "analysis.h"
 #include "dispatch.h"
+#include "sniff.h"
 
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
@@ -8,6 +9,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 
 typedef struct dyn_arr_ip{
 	in_addr_t *arr;
@@ -69,14 +71,16 @@ void exit_callback(int signum){
 	printf("%d ARP responses\n", arp_packets);
 	printf("%d URL Blacklist violations\n", urlv_packets);
 
+	wait(1);
+
 	close_threads();
 	exit(signum);
 }
 
 
 
-void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {
-	int packet_length = header->caplen;
+void analyse(const struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {
+	int packet_length = header->len;
 
 	if (!is_initialised){
 		init_arr_ip(&ip_addresses, 5);
@@ -119,15 +123,18 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 		unsigned int tcp_length = (tcp_header->th_off) * 4;
 
 		if (ntohs(tcp_dst) == 80){
+			
 			int num_bytes = packet_length - (ETH_HLEN + ip_length + tcp_length);
     		unsigned char *payload = (unsigned char *)packet + ETH_HLEN + ip_length + tcp_length;
 			
 			// Copy http payload to string
-			char http_string[packet_length - num_bytes + 1];
-			http_string[packet_length - num_bytes] = '\0';
-			for (int i = 0; i < packet_length - num_bytes; i++){
+			char http_string[num_bytes + 1];
+			http_string[num_bytes] = '\0';
+			for (int i = 0; i < num_bytes; i++){
 				http_string[i] = *(payload + i);
 			}
+
+			printf("\nPacket length:%d, Ip len:%d, Tcp len:%d, Content:%s\n",packet_length,ip_length,tcp_length,http_string);
 
 			char *host_pos = strstr(http_string, "Host: ");
 

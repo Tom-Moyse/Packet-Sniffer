@@ -15,7 +15,7 @@ void callback(unsigned char *verbose_chr, const struct pcap_pkthdr *header, cons
     int verbose = (int) *verbose_chr;
     
     if (verbose) {
-        dump(packet, (*header).len);
+        dump(packet, header->len);
     }
     // Dispatch packet for processing
     dispatch(header, packet, verbose);
@@ -91,11 +91,8 @@ void sniff(char *interface, int verbose) {
         printf("SUCCESS! Opened %s for capture\n", interface);
     }
 
-    struct pcap_pkthdr header;
-    const unsigned char *packet;
-
     // Create unsigned char for verbose such that it can be passed to callback function
-    const unsigned char verbose_chr = (unsigned char) verbose;
+    unsigned char verbose_chr = (unsigned char) verbose;
 
     // Add signal handler for CtrlC detection
     signal(SIGINT, exit_callback);
