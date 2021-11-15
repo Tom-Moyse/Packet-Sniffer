@@ -1,6 +1,3 @@
-#include "dispatch.h"
-#include "sniff.h"
-
 #include <pcap.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -9,74 +6,82 @@
 
 #include "analysis.h"
 
-struct node {  // data structure for each node
+typedef struct stored_packet_queue{
+    packet_node* head;
+    packet_node* tail;
+} stored_packet_queue;
+
+typedef struct packet_node{
     struct pcap_pkthdr header;
-    unsigned char packet[1500];
-    int verbose;
-    struct node *next;
-};
+    unsigned char* data_start;
+    unsigned int data_length; 
+    struct packet_node* next;
+} packet_node;
 
-struct queue {  // data structure for queue
-    struct node *head;
-    struct node *tail;
-};
-
-struct queue *create_queue(void) {  //creates a queue and returns its pointer
-    struct queue *q = (struct queue *)malloc(sizeof(struct queue));
-    q->head = NULL;
-    q->tail = NULL;
-    return (q);
+int is_empty(stored_packet_queue *q){
+    return (!q->head);
 }
 
-int isempty(struct queue *q) {  // checks if queue is empty
-    return (q->head == NULL);
+int tail_empty(stored_packet_queue *q){
+    return (!q->tail);
 }
 
-void dequeue(struct queue *q) {  //dequeues a the head node
-    struct node *head_node;
-    if (isempty(q)) {
-        printf("Error: attempt to dequeue from an empty queue");
-    } else {
-        head_node = q->head;
-        q->head = q->head->next;
-        if (q->head == NULL)
-            q->tail = NULL;
-        free(head_node);
+void store_packet(stored_packet_queue *q, const struct pcap_pkthdr *header, const unsigned char *packet){
+    // Allocate resources and create packet
+    unsigned int packet_size = header->len;
+    packet_node* new_packet = malloc(sizeof(packet_node));
+    unsigned char* packet_data = malloc(sizeof(unsigned char) * packet_size);
+    memcpy(packet_data, packet, packet_size);
+    new_packet->header = *header;
+    new_packet->data_length = packet_size;
+    new_packet->data_start = packet_data;
+
+    if (is_empty(q)){
+        if(tail_empty(q)){
+            q->head = new_packet;
+        }
+        else{
+            q->tail = new_packet;
+        }
+    }
+    else{
+        q->tail->next = new_packet;
+        q->tail = q->tail->next;
     }
 }
 
-void destroy_queue(struct queue *q) {  //destroys the queue and frees the memory
-    while (!isempty(q)) {
-        dequeue(q);
+int remove_packet(stored_packet_queue *q){
+    if (is_empty(q)){
+        printf("The queue is empty - operation failed\n");
+        return EXIT_FAILURE;
     }
-    free(q);
-}
-
-void enqueue(struct queue *q, const struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {  //enqueues a node with an item
-    struct node *new_node = (struct node *)malloc(sizeof(struct node));
-    new_node->header = *header;
-    //memset(new_node->packet, '\0', header->len);
-    memcpy(new_node->packet, packet, header->len);
-    new_node->verbose = verbose;
-    new_node->next = NULL;
-
-    // printf("In Q packet: \n");
-    // dump(new_node->packet, header->len);
-
-    //printf("Size 0: %d, Size 1: %d\n",new_node->nheader->len,new_node->headsize);
-    if (isempty(q)) {
-        q->head = new_node;
-        q->tail = new_node;
-    } else {
-        q->tail->next = new_node;
-        q->tail = new_node;
+    if (tail_empty(q)){
+        free(q->head->data_start);
+        free(q->head);
+        q->head = NULL;
+        return EXIT_SUCCESS;
     }
+    packet_node *current_head = q->head;
+    q->head = q->head->next;
+    if (q->head == q->tail){
+        q->tail = NULL;
+    }
+    free(current_head->data_start);
+    free(current_head);
+    current_head = NULL;
+    return EXIT_SUCCESS;
 }
 
 #define NUMTHREADS 1
-/* Queue where the main server thread adds work and from where the 
-worker threads pull work*/
-struct queue *work_queue;
+
+stored_packet_queue packet_queue;
+//packet_node *to_analyse;
+
+void init_structures(){
+    //to_analyse = calloc(NUMTHREADS, 1500);
+    packet_queue.head = NULL;
+    packet_queue.tail = NULL;
+}
 
 /* mutex lock required for the shared queue*/
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -89,52 +94,12 @@ static int end_analysis = 0;
 
 /*Function to be executed by each worker thread*/
 void *handle_thread(void *arg) {
-    const struct pcap_pkthdr *header;
-    unsigned char *packet = (unsigned char *) calloc(1500, sizeof(unsigned char));
-    unsigned char *temp;
-    int verbose;
-    /* In a loop continue checking if any more work is left to be done*/
-    while (1) {
-        // acquire lock, get connection socket descriptor from work queue, release lock
-        // wait if work queue is empty
-        pthread_mutex_lock(&queue_mutex);
-        while (isempty(work_queue)) {
-            pthread_cond_wait(&queue_cond, &queue_mutex);
-        }
-        temp = realloc(packet, work_queue->head->header.len * sizeof(unsigned char));
-        // temp = realloc(packet, 1500 * sizeof(unsigned char));
-        if (temp != NULL){ packet = temp; }
-        else { printf("FUCK\n"); }
-        printf("Packet size: %d\n", work_queue->head->header.len);
-        //memset(packet + work_queue->head->header.len, 0, 1500 - work_queue->head->header.len);
-        memcpy(packet, work_queue->head->packet, work_queue->head->header.len);
-        header = &(work_queue->head->header);
-        verbose = work_queue->head->verbose;
-
-        printf("In thread packet:\n");
-        dump(packet, header->len);
-
-        dequeue(work_queue);
-
-        printf("\n\n\nPacket Inside\n");
-        dump(packet, header->len);
-
-        pthread_mutex_unlock(&queue_mutex);
-        
-        
-        analyse(header, packet, verbose);
-
-        if (end_analysis){
-            //free(packet);
-            return NULL;
-        }
-    }
     return NULL;
 }
 
 void init_threads(){
     //create work queue
-    work_queue = create_queue();
+    init_structures();
 
     //create the worker threads
     for (int i = 0; i < NUMTHREADS; i++) {
@@ -144,7 +109,7 @@ void init_threads(){
 }
 
 void close_threads(){
-    destroy_queue(work_queue);
+    
     end_analysis = 1;
 }
 
@@ -152,14 +117,5 @@ void dispatch(const struct pcap_pkthdr *header,
               const unsigned char *packet,
               int verbose) {
                   
-    // acquire lock, add connection socket to the work queue,
-    // signal the waiting threads, and release lock
-    pthread_mutex_lock(&queue_mutex);
-    //printf("\n\n\nPacket Outside\n");
-    //dump(packet, header->len);
-    enqueue(work_queue, header, packet, verbose);
-    //printf("Packet size: %d, True Packet size: %d\n", work_queue->head->header.len, header->len);
-    pthread_cond_broadcast(&queue_cond);
-    pthread_mutex_unlock(&queue_mutex);
-    //analyse(header, packet, verbose);
+    
 }
