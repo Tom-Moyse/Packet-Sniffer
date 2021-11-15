@@ -109,13 +109,15 @@ void init_threads(){
 }
 
 void close_threads(){
-    
+    while (remove_packet(&packet_queue)){
+        printf("Packet data freed\n");
+    }
     end_analysis = 1;
 }
 
 void dispatch(const struct pcap_pkthdr *header,
               const unsigned char *packet,
               int verbose) {
-                  
+      
     
 }
