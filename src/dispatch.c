@@ -30,6 +30,7 @@ int is_empty(stored_packet_queue *q) {
 
 void store_packet(stored_packet_queue *q, const struct pcap_pkthdr *header, const unsigned char *packet) {
     // Allocate resources and create packet
+    printf("Storing Packet\n");
     unsigned int packet_size = header->len;
     packet_q_node *new_packet = malloc(sizeof(packet_q_node));
     unsigned char *packet_data = malloc(sizeof(unsigned char) * packet_size);
@@ -74,7 +75,6 @@ int remove_packet(stored_packet_queue *q) {
 }
 
 int get_analysis_index(int *new_packets, int size) {
-    printf("New Packets: [%d, %d]\n",new_packets[0], new_packets[1]);
     for (int i = 0; i < size; i++) {
         if (new_packets[i] == 0) {
             return i;
@@ -112,7 +112,6 @@ void *handle_analyse(void *arg) {
     // Check if new packet to analyse
     while (1) {
         if (new_packets[tid] == 1) {
-            printf("We about to analyse!\n");
             analyse(&to_analyse[tid].header, to_analyse[tid].data_start, 0);
             free(to_analyse[tid].data_start);
             new_packets[tid] = 0;
@@ -125,13 +124,13 @@ void *handle_analyse(void *arg) {
 void *handle_allocate(void *arg) {
     int p_index;
     while (1) {
-        pthread_mutex_lock(&queue_mutex);
-        while (is_empty(&packet_queue)) {
-            pthread_cond_wait(&queue_cond, &queue_mutex);
-        }
         p_index = get_analysis_index(new_packets, NUMTHREADS);
         if (p_index == -1) {
             continue;
+        }
+        pthread_mutex_lock(&queue_mutex);
+        while (is_empty(&packet_queue)) {
+            pthread_cond_wait(&queue_cond, &queue_mutex);
         }
         // Transfer packet from queue to packet struct in to_analyse at given index
         to_analyse[p_index].header = packet_queue.start->header;
@@ -141,7 +140,6 @@ void *handle_allocate(void *arg) {
 
         // Indicate to thread that there's a new packet to analyse
         new_packets[p_index] = 1;
-        printf("Packet index: %d\n",p_index);
         // Remove packet from queue
         remove_packet(&packet_queue);
 
