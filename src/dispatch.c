@@ -83,7 +83,7 @@ int get_analysis_index(int *new_packets, int size) {
     return -1;
 }
 
-#define NUMTHREADS 5
+#define NUMTHREADS 10
 
 stored_packet_queue packet_queue;
 packet_node *to_analyse;
@@ -122,6 +122,7 @@ void *handle_analyse(void *arg) {
         if (new_packets[tid] == 1) {
             analyse(&to_analyse[tid].header, to_analyse[tid].data_start, 0);
             free(to_analyse[tid].data_start);
+            to_analyse[tid].data_start = NULL;
             new_packets[tid] = 0;
         }
     }
@@ -131,6 +132,7 @@ void *handle_analyse(void *arg) {
 /*Function to be executed by allocation thread*/
 void *handle_allocate(void *arg) {
     int p_index;
+
     while (1) {
         if (end_analysis) {
             return NULL;
@@ -179,8 +181,12 @@ void init_threads() {
 
 void close_threads() {
     end_analysis = 1;
+    int packets_unanalysed = 0;
     while (!remove_packet(&packet_queue)) {
-        printf("Packet data freed\n");
+        packets_unanalysed++;
+    }
+    if (packets_unanalysed > 0){
+        printf("Program was yet to analyse %d packets\n", packets_unanalysed);
     }
     // Condition broadcast to stop thread being blocked and thus not terminating
     pthread_cond_broadcast(&queue_cond);
@@ -188,6 +194,11 @@ void close_threads() {
     pthread_join(tid[0], NULL);
 
     // Also free structures
+    for (int i = 0; i < NUMTHREADS; i++){
+        if (to_analyse[i].data_start){
+            free(to_analyse[i].data_start);
+        }
+    }
     free(to_analyse);
 }
 

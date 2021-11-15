@@ -72,7 +72,8 @@ void exit_callback(int signum){
 	free_arr_ip(&ip_addresses);
 	close_conn();
 
-	printf("\n%d SYN packets detected from %d different IPs (syn attack)\n", syn_packets, length);
+	printf("\nIntrusion Detection Report:\n");
+	printf("%d SYN packets detected from %d different IPs (syn attack)\n", syn_packets, length);
 	printf("%d ARP responses\n", arp_packets);
 	printf("%d URL Blacklist violations\n", urlv_packets);
 
