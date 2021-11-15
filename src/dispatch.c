@@ -30,7 +30,7 @@ int is_empty(stored_packet_queue *q) {
 
 void store_packet(stored_packet_queue *q, const struct pcap_pkthdr *header, const unsigned char *packet) {
     // Allocate resources and create packet
-    printf("Storing Packet\n");
+    //printf("Storing Packet\n");
     unsigned int packet_size = header->len;
     packet_q_node *new_packet = malloc(sizeof(packet_q_node));
     unsigned char *packet_data = malloc(sizeof(unsigned char) * packet_size);
@@ -83,18 +83,12 @@ int get_analysis_index(int *new_packets, int size) {
     return -1;
 }
 
-#define NUMTHREADS 2
+#define NUMTHREADS 5
 
 stored_packet_queue packet_queue;
 packet_node *to_analyse;
 int new_packets[NUMTHREADS] = {0};
 int analysis_index = 0;
-
-void init_structures() {
-    packet_queue.start = NULL;
-    packet_queue.end = NULL;
-    to_analyse = malloc(NUMTHREADS * sizeof(packet_node));
-}
 
 /* mutex lock required for the shared queue*/
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -102,15 +96,29 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 
 pthread_t tid[NUMTHREADS + 1];
+
+pthread_attr_t attr;
+
 int threadnums[NUMTHREADS];
 
 static int end_analysis = 0;
+
+void init_structures() {
+    packet_queue.start = NULL;
+    packet_queue.end = NULL;
+    to_analyse = malloc(NUMTHREADS * sizeof(packet_node));
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, 1);
+}
 
 /*Function to be executed by each analysis thread*/
 void *handle_analyse(void *arg) {
     int tid = *((int *)arg);
     // Check if new packet to analyse
     while (1) {
+        if (end_analysis){
+            return NULL;
+        }
         if (new_packets[tid] == 1) {
             analyse(&to_analyse[tid].header, to_analyse[tid].data_start, 0);
             free(to_analyse[tid].data_start);
@@ -124,6 +132,10 @@ void *handle_analyse(void *arg) {
 void *handle_allocate(void *arg) {
     int p_index;
     while (1) {
+        if (end_analysis) {
+            return NULL;
+        }
+
         p_index = get_analysis_index(new_packets, NUMTHREADS);
         if (p_index == -1) {
             continue;
@@ -144,11 +156,6 @@ void *handle_allocate(void *arg) {
         remove_packet(&packet_queue);
 
         pthread_mutex_unlock(&queue_mutex);
-
-        if (end_analysis) {
-            //free(packet);
-            return NULL;
-        }
     }
     return NULL;
 }
@@ -158,22 +165,21 @@ void init_threads() {
     init_structures();
 
     //create the allocater thread
-    pthread_create(&tid[0], NULL, handle_allocate, NULL);
-    pthread_detach(tid[0]);
+    pthread_create(&tid[0], &attr, handle_allocate, NULL);
 
     //create the analysis threads
     for (int i = 0; i < NUMTHREADS; i++) {
         threadnums[i] = i;
-        pthread_create(&tid[i + 1], NULL, handle_analyse, &threadnums[i]);
-        pthread_detach(tid[i + 1]);
+        pthread_create(&tid[i + 1], &attr, handle_analyse, &threadnums[i]);
     }
 }
 
 void close_threads() {
+    end_analysis = 1;
     while (!remove_packet(&packet_queue)) {
         printf("Packet data freed\n");
     }
-    end_analysis = 1;
+    pthread_attr_destroy(&attr);
 }
 
 void dispatch(const struct pcap_pkthdr *header,

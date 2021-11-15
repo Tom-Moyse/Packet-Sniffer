@@ -131,7 +131,7 @@ void analyse(struct pcap_pkthdr *header, unsigned char *packet, int verbose) {
 				http_string[i] = *(payload + i);
 			}
 
-			printf("\nPacket length:%d, Ip len:%d, Tcp len:%d, Content:%s\n",packet_length,ip_length,tcp_length,http_string);
+			//printf("\nPacket length:%d, Ip len:%d, Tcp len:%d, Content:%s\n",packet_length,ip_length,tcp_length,http_string);
 
 			char *host_pos = strstr(http_string, "Host: ");
 
