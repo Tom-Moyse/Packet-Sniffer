@@ -75,10 +75,10 @@ int remove_packet(stored_packet_queue *q){
 #define NUMTHREADS 1
 
 stored_packet_queue packet_queue;
-//packet_node *to_analyse;
+packet_node *to_analyse;
 
 void init_structures(){
-    //to_analyse = calloc(NUMTHREADS, 1500);
+    to_analyse = calloc(NUMTHREADS, 1500);
     packet_queue.head = NULL;
     packet_queue.tail = NULL;
 }
@@ -88,12 +88,17 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 
-pthread_t tid[NUMTHREADS];
+pthread_t tid[NUMTHREADS+1];
 
 static int end_analysis = 0;
 
-/*Function to be executed by each worker thread*/
-void *handle_thread(void *arg) {
+/*Function to be executed by each analysis thread*/
+void *handle_analyse(void *arg) {
+    return NULL;
+}
+
+/*Function to be executed by allocation thread*/
+void *handle_allocate(void *arg) {
     return NULL;
 }
 
@@ -101,9 +106,13 @@ void init_threads(){
     //create work queue
     init_structures();
 
-    //create the worker threads
-    for (int i = 0; i < NUMTHREADS; i++) {
-        pthread_create(&tid[i], NULL, handle_thread, NULL);
+    //create the allocater thread
+    pthread_create(&tid[0], NULL, handle_allocate, NULL);
+    pthread_detach(tid[0]);
+
+    //create the analysis threads
+    for (int i = 1; i < NUMTHREADS + 1; i++) {
+        pthread_create(&tid[i], NULL, handle_analyse, NULL);
         pthread_detach(tid[i]);
     }
 }
