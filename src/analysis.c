@@ -76,7 +76,8 @@ void exit_callback(int signum){
 
 
 
-void analyse(const struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {
+void analyse(struct pcap_pkthdr *header, unsigned char *packet, int verbose) {
+	printf("WE ANALYSING");
 	int packet_length = header->len;
 
 	if (!is_initialised){

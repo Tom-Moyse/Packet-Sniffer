@@ -1,86 +1,84 @@
 #include <pcap.h>
 #include <pthread.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "analysis.h"
 
-typedef struct stored_packet_queue{
-    packet_q_node* head;
-    packet_q_node* tail;
-} stored_packet_queue;
-
-typedef struct packet_q_node{
+typedef struct packet_q_node {
     struct pcap_pkthdr header;
-    unsigned char* data_start;
-    unsigned int data_length; 
-    struct packet_node* next;
+    unsigned char *data_start;
+    unsigned int data_length;
+    struct packet_q_node *next;
 } packet_q_node;
 
-typedef struct packet_node{
+typedef struct stored_packet_queue {
+    packet_q_node *start;
+    packet_q_node *end;
+} stored_packet_queue;
+
+typedef struct packet_node {
     struct pcap_pkthdr header;
-    unsigned char* data_start;
-    unsigned int data_length; 
+    unsigned char *data_start;
+    unsigned int data_length;
 } packet_node;
 
-int is_empty(stored_packet_queue *q){
-    return (!q->head);
+int is_empty(stored_packet_queue *q) {
+    return (!q->start);
 }
 
-int tail_empty(stored_packet_queue *q){
-    return (!q->tail);
-}
-
-void store_packet(stored_packet_queue *q, const struct pcap_pkthdr *header, const unsigned char *packet){
+void store_packet(stored_packet_queue *q, const struct pcap_pkthdr *header, const unsigned char *packet) {
     // Allocate resources and create packet
     unsigned int packet_size = header->len;
-    packet_q_node* new_packet = malloc(sizeof(packet_q_node));
-    unsigned char* packet_data = malloc(sizeof(unsigned char) * packet_size);
+    packet_q_node *new_packet = malloc(sizeof(packet_q_node));
+    unsigned char *packet_data = malloc(sizeof(unsigned char) * packet_size);
     memcpy(packet_data, packet, packet_size);
     new_packet->header = *header;
     new_packet->data_length = packet_size;
     new_packet->data_start = packet_data;
 
-    if (is_empty(q)){
-        if(tail_empty(q)){
-            q->head = new_packet;
-        }
-        else{
-            q->tail = new_packet;
-        }
+    if (is_empty(q)) {
+        q->start = new_packet;
+        q->end = new_packet;
     }
-    else{
-        q->tail->next = new_packet;
-        q->tail = q->tail->next;
+    else {
+        q->end->next = new_packet;
+        q->end = q->end->next;
     }
 }
 
-int remove_packet(stored_packet_queue *q){
-    if (is_empty(q)){
-        printf("The queue is empty - operation failed\n");
+int remove_packet(stored_packet_queue *q) {
+    //printf("REMOVING PACKET\n");
+    if (is_empty(q)) {
+        //printf("The queue is empty - operation failed\n");
         return EXIT_FAILURE;
     }
-    if (tail_empty(q)){
-        free(q->head->data_start);
-        free(q->head);
-        q->head = NULL;
+    if (q->start == q->end) {
+        //printf("ONLY ONE NODE\n");
+        free(q->start->data_start);
+        free(q->start);
+        q->start = NULL;
+        q->end = NULL;
         return EXIT_SUCCESS;
     }
-    packet_q_node *current_head = q->head;
-    q->head = q->head->next;
-    if (q->head == q->tail){
-        q->tail = NULL;
-    }
-    free(current_head->data_start);
-    free(current_head);
-    current_head = NULL;
+    //printf("MANY NODES\n");
+    packet_q_node *current_start = q->start;
+
+    q->start = q->start->next;
+    free(current_start->data_start);
+    free(current_start);
+    current_start = NULL;
+    //printf("New Head After: %p\n", q->start);
     return EXIT_SUCCESS;
 }
 
-int get_analysis_index(int* new_packets, int size){
-    for (int i = 0; i < size; i++){
-        if (new_packets[i]){ return i; }
+int get_analysis_index(int *new_packets, int size) {
+    printf("New Packets: [%d, %d]\n",new_packets[0], new_packets[1]);
+    for (int i = 0; i < size; i++) {
+        if (new_packets[i] == 0) {
+            return i;
+        }
     }
     return -1;
 }
@@ -89,14 +87,13 @@ int get_analysis_index(int* new_packets, int size){
 
 stored_packet_queue packet_queue;
 packet_node *to_analyse;
-int new_packets[NUMTHREADS];
+int new_packets[NUMTHREADS] = {0};
 int analysis_index = 0;
 
-void init_structures(){
-    packet_queue.head = NULL;
-    packet_queue.tail = NULL;
+void init_structures() {
+    packet_queue.start = NULL;
+    packet_queue.end = NULL;
     to_analyse = malloc(NUMTHREADS * sizeof(packet_node));
-    memset(new_packets, 1, sizeof(new_packets));
 }
 
 /* mutex lock required for the shared queue*/
@@ -104,13 +101,23 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 
-pthread_t tid[NUMTHREADS+1];
+pthread_t tid[NUMTHREADS + 1];
+int threadnums[NUMTHREADS];
 
 static int end_analysis = 0;
 
 /*Function to be executed by each analysis thread*/
 void *handle_analyse(void *arg) {
-    printf("Thread id: %d", pthread_self());
+    int tid = *((int *)arg);
+    // Check if new packet to analyse
+    while (1) {
+        if (new_packets[tid] == 1) {
+            printf("We about to analyse!\n");
+            analyse(&to_analyse[tid].header, to_analyse[tid].data_start, 0);
+            free(to_analyse[tid].data_start);
+            new_packets[tid] = 0;
+        }
+    }
     return NULL;
 }
 
@@ -122,24 +129,25 @@ void *handle_allocate(void *arg) {
         while (is_empty(&packet_queue)) {
             pthread_cond_wait(&queue_cond, &queue_mutex);
         }
-        if (p_index = get_analysis_index(new_packets, NUMTHREADS) == -1){
+        p_index = get_analysis_index(new_packets, NUMTHREADS);
+        if (p_index == -1) {
             continue;
         }
         // Transfer packet from queue to packet struct in to_analyse at given index
-        to_analyse[p_index].header = packet_queue.head->header;
-        to_analyse[p_index].data_length = packet_queue.head->data_length;
-        to_analyse[p_index].data_start = malloc(packet_queue.head->data_length);
-        memcpy(to_analyse[p_index].data_start, packet_queue.head->data_start, packet_queue.head->data_length);
+        to_analyse[p_index].header = packet_queue.start->header;
+        to_analyse[p_index].data_length = packet_queue.start->data_length;
+        to_analyse[p_index].data_start = malloc(packet_queue.start->data_length);
+        memcpy(to_analyse[p_index].data_start, packet_queue.start->data_start, packet_queue.start->data_length);
 
         // Indicate to thread that there's a new packet to analyse
         new_packets[p_index] = 1;
-
+        printf("Packet index: %d\n",p_index);
         // Remove packet from queue
         remove_packet(&packet_queue);
 
         pthread_mutex_unlock(&queue_mutex);
 
-        if (end_analysis){
+        if (end_analysis) {
             //free(packet);
             return NULL;
         }
@@ -147,7 +155,7 @@ void *handle_allocate(void *arg) {
     return NULL;
 }
 
-void init_threads(){
+void init_threads() {
     //create work queue
     init_structures();
 
@@ -156,14 +164,15 @@ void init_threads(){
     pthread_detach(tid[0]);
 
     //create the analysis threads
-    for (int i = 1; i < NUMTHREADS + 1; i++) {
-        pthread_create(&tid[i], NULL, handle_analyse, NULL);
-        pthread_detach(tid[i]);
+    for (int i = 0; i < NUMTHREADS; i++) {
+        threadnums[i] = i;
+        pthread_create(&tid[i + 1], NULL, handle_analyse, &threadnums[i]);
+        pthread_detach(tid[i + 1]);
     }
 }
 
-void close_threads(){
-    while (remove_packet(&packet_queue)){
+void close_threads() {
+    while (!remove_packet(&packet_queue)) {
         printf("Packet data freed\n");
     }
     end_analysis = 1;
@@ -172,7 +181,6 @@ void close_threads(){
 void dispatch(const struct pcap_pkthdr *header,
               const unsigned char *packet,
               int verbose) {
-      
     pthread_mutex_lock(&queue_mutex);
     store_packet(&packet_queue, header, packet);
     pthread_cond_broadcast(&queue_cond);

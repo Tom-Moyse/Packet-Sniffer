@@ -3,8 +3,8 @@
 
 #include <pcap.h>
 
-void analyse(const struct pcap_pkthdr *header,
-             const unsigned char *packet,
+void analyse(struct pcap_pkthdr *header,
+             unsigned char *packet,
              int verbose);
 
 void exit_callback(int signum);
