@@ -9,7 +9,11 @@
 #include "dispatch.h"
 #include "analysis.h"
 
+pcap_t *pcap_handle;
 
+void close_conn(){
+    pcap_close(pcap_handle);
+}
 // Callback function for pcap_loop() that determines if packet should be dumped based upon verbose flag
 void callback(unsigned char *verbose_chr, const struct pcap_pkthdr *header, const unsigned char *packet) {
     int verbose = (int) *verbose_chr;
@@ -83,7 +87,7 @@ void sniff(char *interface, int verbose) {
 
     // Open the specified network interface for packet capture. pcap_open_live() returns the handle to be used for the packet
     // capturing session. check the man page of pcap_open_live()
-    pcap_t *pcap_handle = pcap_open_live(interface, 4096, 1, 1000, errbuf);
+    pcap_handle = pcap_open_live(interface, 4096, 1, 1000, errbuf);
     if (pcap_handle == NULL) {
         fprintf(stderr, "Unable to open interface %s\n", errbuf);
         exit(EXIT_FAILURE);

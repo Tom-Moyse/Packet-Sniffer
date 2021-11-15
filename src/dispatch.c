@@ -143,6 +143,9 @@ void *handle_allocate(void *arg) {
         pthread_mutex_lock(&queue_mutex);
         while (is_empty(&packet_queue)) {
             pthread_cond_wait(&queue_cond, &queue_mutex);
+            if (end_analysis) {
+                return NULL;
+            }
         }
         // Transfer packet from queue to packet struct in to_analyse at given index
         to_analyse[p_index].header = packet_queue.start->header;
@@ -165,7 +168,7 @@ void init_threads() {
     init_structures();
 
     //create the allocater thread
-    pthread_create(&tid[0], &attr, handle_allocate, NULL);
+    pthread_create(&tid[0], NULL, handle_allocate, NULL);
 
     //create the analysis threads
     for (int i = 0; i < NUMTHREADS; i++) {
@@ -179,7 +182,13 @@ void close_threads() {
     while (!remove_packet(&packet_queue)) {
         printf("Packet data freed\n");
     }
+    // Condition broadcast to stop thread being blocked and thus not terminating
+    pthread_cond_broadcast(&queue_cond);
     pthread_attr_destroy(&attr);
+    pthread_join(tid[0], NULL);
+
+    // Also free structures
+    free(to_analyse);
 }
 
 void dispatch(const struct pcap_pkthdr *header,

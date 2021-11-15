@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 typedef struct dyn_arr_ip{
 	in_addr_t *arr;
@@ -45,6 +46,8 @@ void free_arr_ip(dyn_arr_ip *arr){
 }
 
 void exit_callback(int signum){
+	close_threads();
+	usleep(100000);
 	// To find number of unique IP's first make sorted array
 	in_addr_t uniques[ip_addresses.used];
 	int length = 0;
@@ -66,11 +69,13 @@ void exit_callback(int signum){
 		}
 	}
 
+	free_arr_ip(&ip_addresses);
+	close_conn();
+
 	printf("\n%d SYN packets detected from %d different IPs (syn attack)\n", syn_packets, length);
 	printf("%d ARP responses\n", arp_packets);
 	printf("%d URL Blacklist violations\n", urlv_packets);
 
-	close_threads();
 	exit(signum);
 }
 
