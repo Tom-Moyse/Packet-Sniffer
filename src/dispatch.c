@@ -5,12 +5,13 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "analysis.h"
 
 struct node {  // data structure for each node
     struct pcap_pkthdr header;
-    unsigned char packet;
+    unsigned char packet[1500];
     int verbose;
     struct node *next;
 };
@@ -54,9 +55,14 @@ void destroy_queue(struct queue *q) {  //destroys the queue and frees the memory
 void enqueue(struct queue *q, const struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {  //enqueues a node with an item
     struct node *new_node = (struct node *)malloc(sizeof(struct node));
     new_node->header = *header;
-    new_node->packet = *packet;
+    //memset(new_node->packet, '\0', header->len);
+    memcpy(new_node->packet, packet, header->len);
     new_node->verbose = verbose;
     new_node->next = NULL;
+
+    // printf("In Q packet: \n");
+    // dump(new_node->packet, header->len);
+
     //printf("Size 0: %d, Size 1: %d\n",new_node->nheader->len,new_node->headsize);
     if (isempty(q)) {
         q->head = new_node;
@@ -84,7 +90,8 @@ static int end_analysis = 0;
 /*Function to be executed by each worker thread*/
 void *handle_thread(void *arg) {
     const struct pcap_pkthdr *header;
-    const unsigned char *packet;
+    unsigned char *packet = (unsigned char *) calloc(1500, sizeof(unsigned char));
+    unsigned char *temp;
     int verbose;
     /* In a loop continue checking if any more work is left to be done*/
     while (1) {
@@ -94,18 +101,31 @@ void *handle_thread(void *arg) {
         while (isempty(work_queue)) {
             pthread_cond_wait(&queue_cond, &queue_mutex);
         }
+        temp = realloc(packet, work_queue->head->header.len * sizeof(unsigned char));
+        // temp = realloc(packet, 1500 * sizeof(unsigned char));
+        if (temp != NULL){ packet = temp; }
+        else { printf("FUCK\n"); }
+        printf("Packet size: %d\n", work_queue->head->header.len);
+        //memset(packet + work_queue->head->header.len, 0, 1500 - work_queue->head->header.len);
+        memcpy(packet, work_queue->head->packet, work_queue->head->header.len);
         header = &(work_queue->head->header);
-        packet = &(work_queue->head->packet);
         verbose = work_queue->head->verbose;
+
+        printf("In thread packet:\n");
+        dump(packet, header->len);
+
         dequeue(work_queue);
-        pthread_mutex_unlock(&queue_mutex);
 
         printf("\n\n\nPacket Inside\n");
         dump(packet, header->len);
 
-        //analyse(header, packet, verbose);
+        pthread_mutex_unlock(&queue_mutex);
+        
+        
+        analyse(header, packet, verbose);
 
         if (end_analysis){
+            //free(packet);
             return NULL;
         }
     }
@@ -135,8 +155,8 @@ void dispatch(const struct pcap_pkthdr *header,
     // acquire lock, add connection socket to the work queue,
     // signal the waiting threads, and release lock
     pthread_mutex_lock(&queue_mutex);
-    printf("\n\n\nPacket Outside\n");
-    dump(packet, header->len);
+    //printf("\n\n\nPacket Outside\n");
+    //dump(packet, header->len);
     enqueue(work_queue, header, packet, verbose);
     //printf("Packet size: %d, True Packet size: %d\n", work_queue->head->header.len, header->len);
     pthread_cond_broadcast(&queue_cond);

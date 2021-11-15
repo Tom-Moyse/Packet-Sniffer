@@ -99,7 +99,7 @@ void analyse(const struct pcap_pkthdr *header, const unsigned char *packet, int 
 
 	//char mystring[50];
 	//printf("IP source: %s\n", inet_ntop(AF_INET, &(ip_src.s_addr), &mystring, 50));
-	printf("IP Protocol: %d\n", ip_protocol);
+	//printf("IP Protocol: %d\n", ip_protocol);
 	if (ip_protocol == IPPROTO_TCP){
 		
 		//Process TCP header
