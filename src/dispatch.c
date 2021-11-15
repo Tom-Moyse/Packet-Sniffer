@@ -99,6 +99,10 @@ void *handle_analyse(void *arg) {
 
 /*Function to be executed by allocation thread*/
 void *handle_allocate(void *arg) {
+    while (1){
+        pthread_mutex_lock(&queue_mutex);
+    }
+    
     return NULL;
 }
 
@@ -128,5 +132,8 @@ void dispatch(const struct pcap_pkthdr *header,
               const unsigned char *packet,
               int verbose) {
       
-    
+    pthread_mutex_lock(&queue_mutex);
+    store_packet(&packet_queue, header, packet);
+    pthread_cond_broadcast(&queue_cond);
+    pthread_mutex_unlock(&queue_mutex);
 }
