@@ -83,7 +83,7 @@ int get_analysis_index(int *new_packets, int size) {
     return -1;
 }
 
-#define NUMTHREADS 10
+#define NUMTHREADS 20
 
 stored_packet_queue packet_queue;
 packet_node *to_analyse;
@@ -94,6 +94,7 @@ int analysis_index = 0;
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t arrp_cond = PTHREAD_COND_INITIALIZER;
 
 pthread_t tid[NUMTHREADS + 1];
 
@@ -104,16 +105,24 @@ static int end_analysis = 0;
 void init_structures() {
     packet_queue.start = NULL;
     packet_queue.end = NULL;
-    to_analyse = malloc(NUMTHREADS * sizeof(packet_node));
+    to_analyse = calloc(NUMTHREADS, sizeof(packet_node));
 }
 
 /*Function to be executed by each analysis thread*/
 void *handle_analyse(void *arg) {
+    pthread_mutex_t placeholder_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&placeholder_mutex);
     int tid = *((int *)arg);
     // Check if new packet to analyse
     while (1) {
         if (end_analysis){
             return NULL;
+        }
+        while(new_packets[tid] == 0){
+            pthread_cond_wait(&arrp_cond, &placeholder_mutex);
+            if (end_analysis){
+                return NULL;
+            }
         }
         if (new_packets[tid] == 1) {
             analyse(&to_analyse[tid].header, to_analyse[tid].data_start, 0);
@@ -153,6 +162,8 @@ void *handle_allocate(void *arg) {
 
         // Indicate to thread that there's a new packet to analyse
         new_packets[p_index] = 1;
+        pthread_cond_broadcast(&arrp_cond);
+
         // Remove packet from queue
         remove_packet(&packet_queue);
 
@@ -177,6 +188,7 @@ void init_threads() {
 
 void close_threads() {
     end_analysis = 1;
+    /*
     int packets_unanalysed = 0;
     while (!remove_packet(&packet_queue)) {
         packets_unanalysed++;
@@ -184,10 +196,12 @@ void close_threads() {
     if (packets_unanalysed > 0){
         printf("Program was yet to analyse %d packets\n", packets_unanalysed);
     }
+    */
     // Condition broadcast to stop thread being blocked and thus not terminating
     pthread_cond_broadcast(&queue_cond);
     pthread_join(tid[0], NULL);
 
+    pthread_cond_broadcast(&arrp_cond);
     // Also free structures
     for (int i = 0; i < NUMTHREADS; i++){
         pthread_join(tid[i+1], NULL);
