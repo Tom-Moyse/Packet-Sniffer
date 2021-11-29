@@ -3,6 +3,5 @@
 
 void sniff(char *interface, int verbose);
 void dump(const unsigned char *data, int length);
-void close_conn();
 
 #endif
