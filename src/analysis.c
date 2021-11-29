@@ -158,9 +158,7 @@ void analyse(struct pcap_pkthdr *header, unsigned char *packet, int verbose) {
 		// Use equals opposed to & as want to check exclusively syn bit set
 		if (tcp_header->th_flags == TH_SYN){
 			// Is SYN packet
-			if (syn_packets < 50){
-				append_arr_ip(&ip_addresses, ip_src.s_addr);
-			}
+			append_arr_ip(&ip_addresses, ip_src.s_addr);
 			syn_packets++;
 		}
 	}
