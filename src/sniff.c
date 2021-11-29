@@ -11,9 +11,10 @@
 
 pcap_t *pcap_handle;
 
-void close_conn(){
-    pcap_close(pcap_handle);
+void terminate_sniff(int sigint){
+    pcap_breakloop(pcap_handle);
 }
+
 // Callback function for pcap_loop() that determines if packet should be dumped based upon verbose flag
 void callback(unsigned char *verbose_chr, const struct pcap_pkthdr *header, const unsigned char *packet) {
     int verbose = (int) *verbose_chr;
@@ -99,8 +100,15 @@ void sniff(char *interface, int verbose) {
     unsigned char verbose_chr = (unsigned char) verbose;
 
     // Add signal handler for CtrlC detection
-    signal(SIGINT, exit_callback);
+    signal(SIGINT, terminate_sniff);
 
     // Captures packets using pcap_loop() and for each packet calls the callback function
     pcap_loop(pcap_handle, -1, callback, &verbose_chr);
+
+    //Will be reached upon CtrlC
+    pcap_close(pcap_handle);
+    close_threads();
+    display_report();
+
+    exit(SIGINT);
 }

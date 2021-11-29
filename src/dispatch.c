@@ -97,8 +97,6 @@ pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 
 pthread_t tid[NUMTHREADS + 1];
 
-pthread_attr_t attr;
-
 int threadnums[NUMTHREADS];
 
 static int end_analysis = 0;
@@ -107,8 +105,6 @@ void init_structures() {
     packet_queue.start = NULL;
     packet_queue.end = NULL;
     to_analyse = malloc(NUMTHREADS * sizeof(packet_node));
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, 1);
 }
 
 /*Function to be executed by each analysis thread*/
@@ -175,7 +171,7 @@ void init_threads() {
     //create the analysis threads
     for (int i = 0; i < NUMTHREADS; i++) {
         threadnums[i] = i;
-        pthread_create(&tid[i + 1], &attr, handle_analyse, &threadnums[i]);
+        pthread_create(&tid[i + 1], NULL, handle_analyse, &threadnums[i]);
     }
 }
 
@@ -190,11 +186,11 @@ void close_threads() {
     }
     // Condition broadcast to stop thread being blocked and thus not terminating
     pthread_cond_broadcast(&queue_cond);
-    pthread_attr_destroy(&attr);
     pthread_join(tid[0], NULL);
 
     // Also free structures
     for (int i = 0; i < NUMTHREADS; i++){
+        pthread_join(tid[i+1], NULL);
         if (to_analyse[i].data_start){
             free(to_analyse[i].data_start);
         }

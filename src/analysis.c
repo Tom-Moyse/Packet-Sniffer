@@ -1,7 +1,3 @@
-#include "analysis.h"
-#include "dispatch.h"
-#include "sniff.h"
-
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -48,9 +44,7 @@ void free_arr_ip(dyn_arr_ip *arr){
 	arr->max = 0;
 }
 
-void exit_callback(int signum){
-	close_threads();
-	usleep(100000);
+void display_report(){
 	// To find number of unique IP's first make sorted array
 	in_addr_t uniques[ip_addresses.used];
 	int length = 0;
@@ -73,14 +67,11 @@ void exit_callback(int signum){
 	}
 
 	free_arr_ip(&ip_addresses);
-	close_conn();
 
 	printf("\nIntrusion Detection Report:\n");
 	printf("%d SYN packets detected from %d different IPs (syn attack)\n", syn_packets, length);
 	printf("%d ARP responses\n", arp_packets);
 	printf("%d URL Blacklist violations\n", urlv_packets);
-
-	exit(signum);
 }
 
 
