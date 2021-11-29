@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 
 typedef struct dyn_arr_ip{
 	in_addr_t *arr;
@@ -22,6 +23,8 @@ static int arp_packets = 0;
 static int urlv_packets = 0;
 static dyn_arr_ip ip_addresses;
 static int is_initialised = 0;
+
+pthread_mutex_t arrip_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void init_arr_ip(dyn_arr_ip *arr, size_t size){
 	arr->arr = malloc(size * sizeof(in_addr_t));
@@ -158,7 +161,9 @@ void analyse(struct pcap_pkthdr *header, unsigned char *packet, int verbose) {
 		// Use equals opposed to & as want to check exclusively syn bit set
 		if (tcp_header->th_flags == TH_SYN){
 			// Is SYN packet
+			pthread_mutex_lock(&arrip_mutex);
 			append_arr_ip(&ip_addresses, ip_src.s_addr);
+			pthread_mutex_unlock(&arrip_mutex);
 			syn_packets++;
 		}
 	}
