@@ -6,6 +6,7 @@
 
 #include "analysis.h"
 
+// Required structs for packet queue storage
 typedef struct packet_q_node {
     struct pcap_pkthdr header;
     unsigned char *data_start;
@@ -29,8 +30,7 @@ int is_empty(stored_packet_queue *q) {
 }
 
 void store_packet(stored_packet_queue *q, const struct pcap_pkthdr *header, const unsigned char *packet) {
-    // Allocate resources and create packet
-    //printf("Storing Packet\n");
+    // Allocates resources and creates copy of packet
     unsigned int packet_size = header->len;
     packet_q_node *new_packet = malloc(sizeof(packet_q_node));
     unsigned char *packet_data = malloc(sizeof(unsigned char) * packet_size);
@@ -39,6 +39,7 @@ void store_packet(stored_packet_queue *q, const struct pcap_pkthdr *header, cons
     new_packet->data_length = packet_size;
     new_packet->data_start = packet_data;
 
+    // Assign packet node to queue
     if (is_empty(q)) {
         q->start = new_packet;
         q->end = new_packet;
@@ -50,30 +51,30 @@ void store_packet(stored_packet_queue *q, const struct pcap_pkthdr *header, cons
 }
 
 int remove_packet(stored_packet_queue *q) {
-    //printf("REMOVING PACKET\n");
+    // Check if packet exists in queue
     if (is_empty(q)) {
-        //printf("The queue is empty - operation failed\n");
         return EXIT_FAILURE;
     }
+    // If only one packet return queue to empty state
     if (q->start == q->end) {
-        //printf("ONLY ONE NODE\n");
         free(q->start->data_start);
         free(q->start);
         q->start = NULL;
         q->end = NULL;
         return EXIT_SUCCESS;
     }
-    //printf("MANY NODES\n");
+
+    // If more than one, free last packet and adjust queue accordingly
     packet_q_node *current_start = q->start;
 
     q->start = q->start->next;
     free(current_start->data_start);
     free(current_start);
     current_start = NULL;
-    //printf("New Head After: %p\n", q->start);
     return EXIT_SUCCESS;
 }
 
+// Function returns first available packet dest. or -1 if no such dest. exists
 int get_analysis_index(int *new_packets, int size) {
     for (int i = 0; i < size; i++) {
         if (new_packets[i] == 0) {
@@ -83,7 +84,8 @@ int get_analysis_index(int *new_packets, int size) {
     return -1;
 }
 
-#define NUMTHREADS 20
+// Define all required global variables/structs
+#define NUMTHREADS 8
 
 stored_packet_queue packet_queue;
 packet_node *to_analyse;
@@ -102,14 +104,16 @@ int threadnums[NUMTHREADS];
 
 static int end_analysis = 0;
 
+// Function to intialise required data structures for packet dispatch
 void init_structures() {
     packet_queue.start = NULL;
     packet_queue.end = NULL;
     to_analyse = calloc(NUMTHREADS, sizeof(packet_node));
 }
 
-/*Function to be executed by each analysis thread*/
+// Function to be executed by each analysis thread
 void *handle_analyse(void *arg) {
+    // Placeholder mutex to allow for condition broadcast thus avoiding excess waste processing
     pthread_mutex_t placeholder_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&placeholder_mutex);
     int tid = *((int *)arg);
@@ -118,12 +122,15 @@ void *handle_analyse(void *arg) {
         if (end_analysis){
             return NULL;
         }
+        // Wait for packet to arrive on condition broadcast
         while(new_packets[tid] == 0){
             pthread_cond_wait(&arrp_cond, &placeholder_mutex);
             if (end_analysis){
+                pthread_mutex_unlock(&placeholder_mutex);
                 return NULL;
             }
         }
+        // Analyse and subsequently free new packet
         if (new_packets[tid] == 1) {
             analyse(&to_analyse[tid].header, to_analyse[tid].data_start, 0);
             free(to_analyse[tid].data_start);
@@ -142,15 +149,17 @@ void *handle_allocate(void *arg) {
         if (end_analysis) {
             return NULL;
         }
-
+        // Check if any available analysis threads
         p_index = get_analysis_index(new_packets, NUMTHREADS);
         if (p_index == -1) {
             continue;
         }
+        // Wait on new packet being added to queue/broadcast
         pthread_mutex_lock(&queue_mutex);
         while (is_empty(&packet_queue)) {
             pthread_cond_wait(&queue_cond, &queue_mutex);
             if (end_analysis) {
+                pthread_mutex_unlock(&queue_mutex);
                 return NULL;
             }
         }
@@ -187,22 +196,15 @@ void init_threads() {
 }
 
 void close_threads() {
+    // Set termination flag
     end_analysis = 1;
-    /*
-    int packets_unanalysed = 0;
-    while (!remove_packet(&packet_queue)) {
-        packets_unanalysed++;
-    }
-    if (packets_unanalysed > 0){
-        printf("Program was yet to analyse %d packets\n", packets_unanalysed);
-    }
-    */
+
     // Condition broadcast to stop thread being blocked and thus not terminating
     pthread_cond_broadcast(&queue_cond);
     pthread_join(tid[0], NULL);
 
     pthread_cond_broadcast(&arrp_cond);
-    // Also free structures
+    // Free relevant packet structures
     for (int i = 0; i < NUMTHREADS; i++){
         pthread_join(tid[i+1], NULL);
         if (to_analyse[i].data_start){
@@ -212,9 +214,11 @@ void close_threads() {
     free(to_analyse);
 }
 
+// Simple dispatch interface function which adds packet to the processing queue
 void dispatch(const struct pcap_pkthdr *header,
               const unsigned char *packet,
               int verbose) {
+    // Lock queue mutexes, store packet and broadcast packet added
     pthread_mutex_lock(&queue_mutex);
     store_packet(&packet_queue, header, packet);
     pthread_cond_broadcast(&queue_cond);

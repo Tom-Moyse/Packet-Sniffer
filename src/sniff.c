@@ -16,7 +16,7 @@ void terminate_sniff(int sigint){
 }
 
 // Callback function for pcap_loop() that determines if packet should be dumped based upon verbose flag
-void callback(unsigned char *verbose_chr, const struct pcap_pkthdr *header, const unsigned char *packet) {
+void handle_packet(unsigned char *verbose_chr, const struct pcap_pkthdr *header, const unsigned char *packet) {
     int verbose = (int) *verbose_chr;
     
     if (verbose) {
@@ -83,11 +83,12 @@ void dump(const unsigned char *data, int length) {
 
 // Application main sniffing loop
 void sniff(char *interface, int verbose) {
+    // Initalise threads via dispatch
     init_threads();
     char errbuf[PCAP_ERRBUF_SIZE];
 
     // Open the specified network interface for packet capture. pcap_open_live() returns the handle to be used for the packet
-    // capturing session. check the man page of pcap_open_live()
+    // capturing session
     pcap_handle = pcap_open_live(interface, 4096, 1, 1000, errbuf);
     if (pcap_handle == NULL) {
         fprintf(stderr, "Unable to open interface %s\n", errbuf);
@@ -103,12 +104,10 @@ void sniff(char *interface, int verbose) {
     signal(SIGINT, terminate_sniff);
 
     // Captures packets using pcap_loop() and for each packet calls the callback function
-    pcap_loop(pcap_handle, -1, callback, &verbose_chr);
+    pcap_loop(pcap_handle, -1, handle_packet, &verbose_chr);
 
-    //Will be reached upon CtrlC
+    //Will be reached upon CtrlC - frees up resources and then displays report
     pcap_close(pcap_handle);
     close_threads();
     display_report();
-
-    exit(SIGINT);
 }
